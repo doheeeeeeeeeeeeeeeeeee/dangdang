@@ -323,7 +323,7 @@
 
     </main>
 
-    <!-- 하단 네비게이션 탭 (6개로 분할 -> flex-1 속성으로 자동 배분) -->
+    <!-- 하단 네비게이션 탭 -->
     <nav class="fixed bottom-0 w-full max-w-lg left-1/2 transform -translate-x-1/2 bg-white border-t border-gray-200 flex justify-between items-center z-30 pb-safe px-1">
         <button onclick="goToTab('home')" class="nav-item active flex-1 flex flex-col items-center py-3 text-gray-400 hover:text-gray-600 transition" data-tab="home">
             <i class="fa-solid fa-house text-base mb-1"></i>
@@ -379,13 +379,15 @@
             const savedData = localStorage.getItem('dangdangRecords');
             const savedTheme = localStorage.getItem('dangdangTheme');
             
-            if (savedTheme) currentTheme = savedTheme;
+            if (savedTheme) {
+                currentTheme = savedTheme;
+            }
             changeTheme(currentTheme);
 
             if (savedData) {
                 records = JSON.parse(savedData);
             } else {
-                generateDummyData(); // 초기 데이터 생성
+                records = []; // 저장된 데이터가 없으면 빈 배열로 초기화 (더미데이터 제거 완료)
                 saveData();
             }
         }
@@ -393,33 +395,6 @@
         function saveData() {
             localStorage.setItem('dangdangRecords', JSON.stringify(records));
             localStorage.setItem('dangdangTheme', currentTheme);
-        }
-
-        function generateDummyData() {
-            const today = new Date();
-            for(let i=0; i<30; i++) {
-                let d = new Date(today);
-                d.setDate(today.getDate() - i);
-                const dStr = d.toISOString().split('T')[0];
-                
-                records.push({
-                    id: Date.now() + i*10, date: dStr, type: 'fasting', hourVal: null,
-                    sugar: 85 + Math.floor(Math.random() * 10), photo: null, mealComment: '', exercise: ''
-                });
-                
-                records.push({
-                    id: Date.now() + i*10 + 1, date: dStr, type: 'lunch', hourVal: '2',
-                    sugar: 100 + Math.floor(Math.random() * 15), photo: null, mealComment: '현미밥, 된장찌개', exercise: '걷기 20분'
-                });
-
-                if (i % 3 === 0) {
-                    records.push({
-                        id: Date.now() + i*10 + 2, date: dStr, type: 'dinner', hourVal: '2',
-                        sugar: 130 + Math.floor(Math.random() * 20),
-                        photo: null, mealComment: '떡볶이, 튀김', exercise: ''
-                    });
-                }
-            }
         }
 
         // --- 2. 기본 유틸리티 함수 ---
