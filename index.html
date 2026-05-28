@@ -1,0 +1,966 @@
+```html
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>당당혈당 일지</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        /* 테마 색상을 위한 CSS 변수 (기본값: 파스텔 핑크) */
+        :root {
+            --bg-light: #fdf2f8; 
+            --main-color: #f472b6; 
+            --text-dark: #be185d;
+            --main-light: #fbcfe8;
+        }
+
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; 
+            background-color: var(--bg-light); 
+            transition: background-color 0.3s ease;
+        }
+        
+        /* 테마 적용 유틸리티 클래스 */
+        .theme-bg { background-color: var(--main-color) !important; color: white !important; }
+        .theme-text { color: var(--main-color) !important; }
+        .theme-border { border-color: var(--main-color) !important; }
+        .theme-ring:focus { --tw-ring-color: var(--main-color); }
+        .theme-btn.active { background-color: var(--main-color) !important; color: white !important; border-color: var(--main-color) !important; }
+        .theme-indicator { background-color: var(--main-color) !important; }
+
+        .tab-btn { background-color: white; color: #4b5563; border-color: #d1d5db; }
+        
+        /* 캘린더 날짜 호버/기록 표시 효과 */
+        .cal-day.has-record::after {
+            content: ''; position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
+            width: 6px; height: 6px; border-radius: 50%; background-color: var(--main-color);
+        }
+
+        /* 하단 탭바 활성화 스타일 */
+        .nav-item.active { color: var(--main-color); font-weight: bold; }
+        
+        ::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body class="text-gray-800 pb-20">
+
+    <!-- 상단 헤더 -->
+    <header class="theme-bg p-4 shadow-md sticky top-0 z-20 flex justify-center items-center transition-colors duration-300">
+        <h1 class="text-xl font-bold"><i class="fa-solid fa-droplet mr-2 text-white"></i>당당혈당</h1>
+    </header>
+
+    <!-- 커스텀 알림창 -->
+    <div id="toastMessage" class="fixed top-20 left-1/2 transform -translate-x-1/2 hidden bg-gray-800 text-white text-sm py-3 px-6 rounded-full text-center shadow-lg transition-opacity duration-300 z-50 whitespace-nowrap"></div>
+
+    <main class="max-w-lg mx-auto w-full relative">
+
+        <!-- ==================== 1. 홈 탭 ==================== -->
+        <section id="tab-home" class="view-section p-4 space-y-6 block">
+            
+            <!-- 테마 선택기 -->
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                <h2 class="text-lg font-bold mb-3 text-gray-700">앱 테마 색상</h2>
+                <div class="flex justify-between px-2">
+                    <button class="w-10 h-10 rounded-full bg-pink-300 ring-2 ring-offset-2 ring-pink-500 shadow-sm" onclick="changeTheme('pink')"></button>
+                    <button class="w-10 h-10 rounded-full bg-yellow-300 shadow-sm" onclick="changeTheme('yellow')"></button>
+                    <button class="w-10 h-10 rounded-full bg-green-300 shadow-sm" onclick="changeTheme('green')"></button>
+                    <button class="w-10 h-10 rounded-full bg-blue-300 shadow-sm" onclick="changeTheme('blue')"></button>
+                    <button class="w-10 h-10 rounded-full bg-purple-300 shadow-sm" onclick="changeTheme('purple')"></button>
+                </div>
+            </div>
+
+            <!-- 오늘의 요약 -->
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 text-center">
+                <h2 class="text-lg font-bold mb-2 text-gray-700">오늘의 컨디션</h2>
+                <p id="homeDateStr" class="text-gray-500 mb-4 font-medium"></p>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="p-4 rounded-xl bg-gray-50">
+                        <p class="text-sm text-gray-500 mb-1">기록 횟수</p>
+                        <p id="homeRecordCount" class="text-2xl font-bold theme-text">0회</p>
+                    </div>
+                    <div class="p-4 rounded-xl bg-gray-50">
+                        <p class="text-sm text-gray-500 mb-1">정상 수치</p>
+                        <p id="homeNormalCount" class="text-2xl font-bold text-green-500">0회</p>
+                    </div>
+                </div>
+                <button onclick="goToTab('daily')" class="mt-4 w-full theme-bg text-white font-bold rounded-xl py-3 shadow-md transition-colors">
+                    오늘 기록하러 가기 <i class="fa-solid fa-arrow-right ml-1"></i>
+                </button>
+            </div>
+        </section>
+
+        <!-- ==================== 2. 하루 기록 탭 ==================== -->
+        <section id="tab-daily" class="view-section p-4 space-y-6 hidden">
+            
+            <!-- 날짜 선택기 -->
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
+                <button onclick="changeDate(-1)" class="p-2 text-gray-400 hover:text-gray-700"><i class="fa-solid fa-chevron-left"></i></button>
+                <input type="date" id="recordDateSelector" class="font-bold text-lg text-gray-700 bg-transparent border-none outline-none text-center flex-1">
+                <button onclick="changeDate(1)" class="p-2 text-gray-400 hover:text-gray-700"><i class="fa-solid fa-chevron-right"></i></button>
+            </div>
+
+            <!-- 기록 입력 폼 -->
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                <h2 id="formTitle" class="text-lg font-bold mb-4 theme-text"><i class="fa-solid fa-pen mr-2"></i>새 기록 추가</h2>
+                
+                <form id="recordForm" class="space-y-4">
+                    <!-- 수정 모드일 때 해당 기록의 ID를 담아둠 -->
+                    <input type="hidden" id="editRecordId" value="">
+                    
+                    <div>
+                        <label class="block text-sm font-semibold mb-2 text-gray-600">언제 측정하셨나요?</label>
+                        <div class="grid grid-cols-4 gap-2">
+                            <button type="button" class="tab-btn theme-btn active border rounded-xl py-2 text-xs font-medium transition" data-type="fasting">공복</button>
+                            <button type="button" class="tab-btn theme-btn border rounded-xl py-2 text-xs font-medium transition" data-type="breakfast">아침식후</button>
+                            <button type="button" class="tab-btn theme-btn border rounded-xl py-2 text-xs font-medium transition" data-type="lunch">점심식후</button>
+                            <button type="button" class="tab-btn theme-btn border rounded-xl py-2 text-xs font-medium transition" data-type="dinner">저녁식후</button>
+                        </div>
+                    </div>
+
+                    <div id="mealOptions" class="hidden space-y-4 pt-2 border-t border-gray-100">
+                        <div>
+                            <label class="block text-sm font-semibold mb-2 text-gray-600">측정 시간</label>
+                            <div class="flex space-x-2">
+                                <label class="flex-1 flex items-center justify-center p-2 border rounded-lg bg-gray-50 cursor-pointer">
+                                    <input type="radio" name="hour" value="1" class="mr-2 accent-current theme-text" checked> 1시간
+                                </label>
+                                <label class="flex-1 flex items-center justify-center p-2 border rounded-lg bg-gray-50 cursor-pointer">
+                                    <input type="radio" name="hour" value="2" class="mr-2 accent-current theme-text"> 2시간
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-semibold mb-2 text-gray-600">혈당 수치</label>
+                        <div class="flex items-center">
+                            <input type="number" id="sugarValue" placeholder="예: 90" class="flex-1 border border-gray-300 rounded-lg p-3 text-lg focus:ring-2 theme-ring focus:outline-none" required>
+                            <span class="ml-3 text-gray-500 font-medium">mg/dL</span>
+                        </div>
+                    </div>
+
+                    <div id="mealDetails" class="hidden space-y-4 pt-2 border-t border-gray-100">
+                        <div>
+                            <label class="block text-sm font-semibold mb-2 text-gray-600">식단 사진</label>
+                            <div class="flex items-center justify-center w-full relative">
+                                <label for="dropzone-file" class="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 overflow-hidden relative">
+                                    <div class="flex flex-col items-center justify-center pt-5 pb-6" id="photoPlaceholder">
+                                        <i class="fa-solid fa-camera text-3xl text-gray-400 mb-2"></i>
+                                        <p class="text-sm text-gray-500">사진 등록</p>
+                                    </div>
+                                    <img id="photoPreview" class="hidden absolute inset-0 w-full h-full object-cover" alt="미리보기">
+                                </label>
+                                <button type="button" id="removePhotoBtn" class="hidden absolute top-2 right-2 bg-gray-800 bg-opacity-70 text-white rounded-full w-8 h-8 flex items-center justify-center z-10"><i class="fa-solid fa-xmark"></i></button>
+                                <input id="dropzone-file" type="file" accept="image/*" class="hidden" />
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold mb-2 text-gray-600">식단 코멘트 (메뉴 분석용)</label>
+                            <textarea id="mealComment" rows="2" placeholder="현미밥, 된장찌개 (쉼표로 구분해주시면 메뉴 분석이 정확해져요!)" class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 theme-ring focus:outline-none"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold mb-2 text-gray-600">운동 기록</label>
+                            <textarea id="exerciseComment" rows="2" placeholder="운동 내용을 자유롭게 적어주세요" class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 theme-ring focus:outline-none"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="flex space-x-2">
+                        <button type="button" id="cancelEditBtn" onclick="resetForm()" class="hidden flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-xl py-3 shadow-sm transition-colors">취소</button>
+                        <button type="submit" id="submitBtn" class="flex-2 w-full theme-bg text-white font-bold rounded-xl py-3 shadow-md transition-colors">기록 저장하기</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- 기록 리스트 -->
+            <div>
+                <h2 class="text-lg font-bold mb-3 text-gray-700 px-1">해당일 기록</h2>
+                <div id="recordsContainer" class="space-y-4"></div>
+            </div>
+        </section>
+
+        <!-- ==================== 3. 달력 탭 ==================== -->
+        <section id="tab-calendar" class="view-section p-4 space-y-4 hidden">
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                <div class="flex justify-between items-center mb-4">
+                    <button onclick="changeMonth(-1)" class="p-2 text-gray-400 hover:text-gray-700"><i class="fa-solid fa-chevron-left"></i></button>
+                    <h2 id="calendarTitle" class="text-lg font-bold text-gray-700"></h2>
+                    <button onclick="changeMonth(1)" class="p-2 text-gray-400 hover:text-gray-700"><i class="fa-solid fa-chevron-right"></i></button>
+                </div>
+                
+                <div class="grid grid-cols-7 gap-1 text-center text-sm font-bold text-gray-500 mb-2">
+                    <div class="text-red-400">일</div><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div class="text-blue-400">토</div>
+                </div>
+                <div id="calendarGrid" class="grid grid-cols-7 gap-1 text-center">
+                    <!-- 달력 생성 영역 -->
+                </div>
+            </div>
+            
+            <div class="bg-gray-50 p-4 rounded-xl text-sm text-gray-600 text-center border border-gray-100">
+                날짜를 터치하면 해당 일자의 기록 화면으로 이동합니다.
+            </div>
+        </section>
+
+        <!-- ==================== 4. 혈당요약 탭 ==================== -->
+        <section id="tab-summary" class="view-section p-4 space-y-4 hidden">
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div class="flex justify-between items-center mb-4 px-2">
+                    <button onclick="changeSummaryMonth(-1)" class="p-2 text-gray-400 hover:text-gray-700"><i class="fa-solid fa-chevron-left"></i></button>
+                    <h2 id="summaryTitle" class="text-lg font-bold text-gray-700"></h2>
+                    <button onclick="changeSummaryMonth(1)" class="p-2 text-gray-400 hover:text-gray-700"><i class="fa-solid fa-chevron-right"></i></button>
+                </div>
+                
+                <div class="w-full overflow-x-auto">
+                    <table class="w-full text-sm text-left text-gray-600 min-w-[300px]">
+                        <thead class="text-xs text-gray-500 bg-gray-50 uppercase border-b border-gray-200 text-center">
+                            <tr>
+                                <th scope="col" class="py-3 px-2 rounded-tl-lg">일자</th>
+                                <th scope="col" class="py-3 px-2">공복</th>
+                                <th scope="col" class="py-3 px-2">아침</th>
+                                <th scope="col" class="py-3 px-2">점심</th>
+                                <th scope="col" class="py-3 px-2 rounded-tr-lg">저녁</th>
+                            </tr>
+                        </thead>
+                        <tbody id="summaryTableBody">
+                            <!-- 요약 데이터 -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div id="summaryEmptyState" class="hidden text-center py-8 text-gray-400">
+                    <i class="fa-solid fa-table-list text-3xl mb-2 text-gray-300"></i>
+                    <p class="text-sm">이번 달 기록이 없습니다.</p>
+                </div>
+                
+                <div class="mt-4 text-xs text-gray-400 text-center bg-gray-50 p-2 rounded">
+                    * 일자를 터치하면 상세 기록을 볼 수 있습니다.<br>
+                    * 붉은색 수치는 기준 초과를 의미합니다.<br>
+                    * 다수 기록 시 가장 최근 수치가 표시됩니다.
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== 5. 메뉴요약 탭 ==================== -->
+        <section id="tab-menusummary" class="view-section p-4 space-y-4 hidden">
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                <div class="mb-4 text-center">
+                    <h2 class="text-lg font-bold text-gray-700"><i class="fa-solid fa-utensils mr-2 theme-text"></i>나의 메뉴 요약</h2>
+                    <p class="text-xs text-gray-500 mt-1">* 3번 이상 기록된 음식 기준 (빈도순 정렬)</p>
+                </div>
+
+                <!-- 안정적인 음식 -->
+                <div class="mb-6">
+                    <div class="flex items-center mb-3">
+                        <div class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 mr-2">
+                            <i class="fa-solid fa-face-smile"></i>
+                        </div>
+                        <h3 class="font-bold text-gray-700 text-base">안정적인 음식 (착한 음식)</h3>
+                    </div>
+                    <div id="goodFoodContainer" class="flex flex-wrap gap-2 p-4 bg-green-50 border border-green-100 rounded-xl min-h-[80px]">
+                        <!-- 착한 음식 태그 -->
+                    </div>
+                </div>
+
+                <!-- 주의가 필요한 음식 -->
+                <div>
+                    <div class="flex items-center mb-3">
+                        <div class="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-red-600 mr-2">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                        </div>
+                        <h3 class="font-bold text-gray-700 text-base">주의가 필요한 음식</h3>
+                    </div>
+                    <div id="badFoodContainer" class="flex flex-wrap gap-2 p-4 bg-red-50 border border-red-100 rounded-xl min-h-[80px]">
+                        <!-- 나쁜 음식 태그 -->
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- ==================== 6. 전체추이 탭 ==================== -->
+        <section id="tab-trends" class="view-section p-4 space-y-4 hidden">
+            
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
+                <h2 class="text-lg font-bold text-gray-700"><i class="fa-solid fa-chart-line mr-2 theme-text"></i>혈당 추이 그래프</h2>
+                
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold mb-1 text-gray-500">조회 기간</label>
+                        <select id="trendPeriod" class="w-full border border-gray-300 rounded-lg p-2 text-sm focus:outline-none theme-ring" onchange="updateChart()">
+                            <option value="7">최근 1주일</option>
+                            <option value="30">최근 1개월</option>
+                            <option value="custom">직접 설정</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold mb-1 text-gray-500">조회 항목</label>
+                        <select id="trendType" class="w-full border border-gray-300 rounded-lg p-2 text-sm focus:outline-none theme-ring" onchange="updateChart()">
+                            <option value="fasting">공복 혈당</option>
+                            <option value="breakfast">아침 식후</option>
+                            <option value="lunch">점심 식후</option>
+                            <option value="dinner">저녁 식후</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div id="customDateRange" class="hidden flex space-x-2 items-center">
+                    <input type="date" id="chartStartDate" class="w-full border border-gray-300 rounded-lg p-2 text-sm" onchange="updateChart()">
+                    <span class="text-gray-400">~</span>
+                    <input type="date" id="chartEndDate" class="w-full border border-gray-300 rounded-lg p-2 text-sm" onchange="updateChart()">
+                </div>
+
+                <div class="relative w-full h-64 mt-4">
+                    <canvas id="bloodSugarChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- 하단 네비게이션 탭 (6개로 분할 -> flex-1 속성으로 자동 배분) -->
+    <nav class="fixed bottom-0 w-full max-w-lg left-1/2 transform -translate-x-1/2 bg-white border-t border-gray-200 flex justify-between items-center z-30 pb-safe px-1">
+        <button onclick="goToTab('home')" class="nav-item active flex-1 flex flex-col items-center py-3 text-gray-400 hover:text-gray-600 transition" data-tab="home">
+            <i class="fa-solid fa-house text-base mb-1"></i>
+            <span class="text-[9px] mt-1">홈</span>
+        </button>
+        <button onclick="goToTab('daily')" class="nav-item flex-1 flex flex-col items-center py-3 text-gray-400 hover:text-gray-600 transition" data-tab="daily">
+            <i class="fa-solid fa-pen-nib text-base mb-1"></i>
+            <span class="text-[9px] mt-1">기록</span>
+        </button>
+        <button onclick="goToTab('calendar')" class="nav-item flex-1 flex flex-col items-center py-3 text-gray-400 hover:text-gray-600 transition" data-tab="calendar">
+            <i class="fa-regular fa-calendar text-base mb-1"></i>
+            <span class="text-[9px] mt-1">달력</span>
+        </button>
+        <button onclick="goToTab('summary')" class="nav-item flex-1 flex flex-col items-center py-3 text-gray-400 hover:text-gray-600 transition" data-tab="summary">
+            <i class="fa-solid fa-table-list text-base mb-1"></i>
+            <span class="text-[9px] mt-1">표요약</span>
+        </button>
+        <button onclick="goToTab('menusummary')" class="nav-item flex-1 flex flex-col items-center py-3 text-gray-400 hover:text-gray-600 transition" data-tab="menusummary">
+            <i class="fa-solid fa-utensils text-base mb-1"></i>
+            <span class="text-[9px] mt-1">메뉴분석</span>
+        </button>
+        <button onclick="goToTab('trends')" class="nav-item flex-1 flex flex-col items-center py-3 text-gray-400 hover:text-gray-600 transition" data-tab="trends">
+            <i class="fa-solid fa-chart-pie text-base mb-1"></i>
+            <span class="text-[9px] mt-1">추이</span>
+        </button>
+    </nav>
+
+    <script>
+        // --- 1. 테마 및 초기 상태 설정 ---
+        const themes = {
+            pink: { light: '#fdf2f8', main: '#f472b6', ring: 'ring-pink-500' },
+            yellow: { light: '#fefce8', main: '#facc15', ring: 'ring-yellow-500' },
+            green: { light: '#f0fdf4', main: '#4ade80', ring: 'ring-green-500' },
+            blue: { light: '#eff6ff', main: '#60a5fa', ring: 'ring-blue-500' },
+            purple: { light: '#faf5ff', main: '#c084fc', ring: 'ring-purple-500' }
+        };
+
+        let records = []; 
+        let selectedDate = getTodayStr();
+        
+        let calYear = new Date().getFullYear();
+        let calMonth = new Date().getMonth();
+        
+        let sumYear = new Date().getFullYear();
+        let sumMonth = new Date().getMonth();
+
+        let currentPhotoDataUrl = null;
+        let chartInstance = null;
+        let currentTheme = 'pink';
+
+        // 브라우저 저장소 로드
+        function loadData() {
+            const savedData = localStorage.getItem('dangdangRecords');
+            const savedTheme = localStorage.getItem('dangdangTheme');
+            
+            if (savedTheme) currentTheme = savedTheme;
+            changeTheme(currentTheme);
+
+            if (savedData) {
+                records = JSON.parse(savedData);
+            } else {
+                generateDummyData(); // 초기 데이터 생성
+                saveData();
+            }
+        }
+
+        function saveData() {
+            localStorage.setItem('dangdangRecords', JSON.stringify(records));
+            localStorage.setItem('dangdangTheme', currentTheme);
+        }
+
+        function generateDummyData() {
+            const today = new Date();
+            for(let i=0; i<30; i++) {
+                let d = new Date(today);
+                d.setDate(today.getDate() - i);
+                const dStr = d.toISOString().split('T')[0];
+                
+                records.push({
+                    id: Date.now() + i*10, date: dStr, type: 'fasting', hourVal: null,
+                    sugar: 85 + Math.floor(Math.random() * 10), photo: null, mealComment: '', exercise: ''
+                });
+                
+                records.push({
+                    id: Date.now() + i*10 + 1, date: dStr, type: 'lunch', hourVal: '2',
+                    sugar: 100 + Math.floor(Math.random() * 15), photo: null, mealComment: '현미밥, 된장찌개', exercise: '걷기 20분'
+                });
+
+                if (i % 3 === 0) {
+                    records.push({
+                        id: Date.now() + i*10 + 2, date: dStr, type: 'dinner', hourVal: '2',
+                        sugar: 130 + Math.floor(Math.random() * 20),
+                        photo: null, mealComment: '떡볶이, 튀김', exercise: ''
+                    });
+                }
+            }
+        }
+
+        // --- 2. 기본 유틸리티 함수 ---
+        function getTodayStr() {
+            const tzoffset = (new Date()).getTimezoneOffset() * 60000;
+            return (new Date(Date.now() - tzoffset)).toISOString().split('T')[0];
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toastMessage');
+            toast.textContent = message;
+            toast.classList.remove('hidden');
+            setTimeout(() => { toast.classList.add('hidden'); }, 3000);
+        }
+
+        window.changeTheme = function(colorKey) {
+            currentTheme = colorKey;
+            const theme = themes[colorKey];
+            document.documentElement.style.setProperty('--bg-light', theme.light);
+            document.documentElement.style.setProperty('--main-color', theme.main);
+            
+            document.querySelectorAll('button[onclick^="changeTheme"]').forEach(btn => {
+                btn.classList.remove('ring-2', 'ring-offset-2', 'ring-pink-500', 'ring-yellow-500', 'ring-green-500', 'ring-blue-500', 'ring-purple-500');
+            });
+            const activeBtn = document.querySelector(`button[onclick="changeTheme('${colorKey}')"]`);
+            if(activeBtn) activeBtn.classList.add('ring-2', 'ring-offset-2', theme.ring);
+            
+            saveData();
+            if(chartInstance) updateChart(); 
+        }
+
+        window.goToTab = function(tabId) {
+            document.querySelectorAll('.view-section').forEach(sec => sec.classList.add('hidden'));
+            document.getElementById('tab-' + tabId).classList.remove('hidden');
+            
+            document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
+            document.querySelector(`.nav-item[data-tab="${tabId}"]`).classList.add('active');
+
+            if (tabId === 'home') updateHome();
+            if (tabId === 'daily') {
+                document.getElementById('recordDateSelector').value = selectedDate;
+                renderDailyRecords();
+            }
+            if (tabId === 'calendar') renderCalendar();
+            if (tabId === 'summary') renderSummary();
+            if (tabId === 'menusummary') renderMenuSummary(); 
+            if (tabId === 'trends') {
+                document.getElementById('chartEndDate').value = getTodayStr();
+                let sd = new Date(); sd.setDate(sd.getDate() - 7);
+                document.getElementById('chartStartDate').value = sd.toISOString().split('T')[0];
+                updateChart();
+            }
+            window.scrollTo(0,0);
+        }
+
+        // --- 3. 홈 탭 로직 ---
+        function updateHome() {
+            document.getElementById('homeDateStr').textContent = selectedDate;
+            const todays = records.filter(r => r.date === selectedDate);
+            document.getElementById('homeRecordCount').textContent = todays.length + "회";
+            
+            const normalCount = todays.filter(r => {
+                if(r.type === 'fasting') return r.sugar < 95;
+                if(r.hourVal === '1') return r.sugar < 140;
+                if(r.hourVal === '2') return r.sugar < 120;
+                return true;
+            }).length;
+            document.getElementById('homeNormalCount').textContent = normalCount + "회";
+        }
+
+        // --- 4. 하루 기록 탭 로직 ---
+        const typeNames = { 'fasting': '공복', 'breakfast': '아침식후', 'lunch': '점심식후', 'dinner': '저녁식후' };
+        let currentType = 'fasting';
+
+        document.querySelectorAll('.tab-btn').forEach(button => {
+            button.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+                button.classList.add('active');
+                currentType = button.getAttribute('data-type');
+                
+                if (currentType === 'fasting') {
+                    document.getElementById('mealOptions').classList.add('hidden');
+                    document.getElementById('mealDetails').classList.add('hidden');
+                } else {
+                    document.getElementById('mealOptions').classList.remove('hidden');
+                    document.getElementById('mealDetails').classList.remove('hidden');
+                }
+            });
+        });
+
+        window.changeDate = function(offset) {
+            let d = new Date(document.getElementById('recordDateSelector').value);
+            d.setDate(d.getDate() + offset);
+            selectedDate = d.toISOString().split('T')[0];
+            document.getElementById('recordDateSelector').value = selectedDate;
+            renderDailyRecords();
+            updateHome();
+        }
+
+        document.getElementById('recordDateSelector').addEventListener('change', (e) => {
+            selectedDate = e.target.value;
+            renderDailyRecords();
+            updateHome();
+        });
+
+        const photoInput = document.getElementById('dropzone-file');
+        const photoPreview = document.getElementById('photoPreview');
+        const photoPlaceholder = document.getElementById('photoPlaceholder');
+        const removePhotoBtn = document.getElementById('removePhotoBtn');
+
+        photoInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    currentPhotoDataUrl = event.target.result;
+                    photoPreview.src = currentPhotoDataUrl;
+                    photoPreview.classList.remove('hidden');
+                    photoPlaceholder.classList.add('hidden');
+                    removePhotoBtn.classList.remove('hidden');
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        removePhotoBtn.addEventListener('click', () => {
+            currentPhotoDataUrl = null;
+            photoInput.value = '';
+            photoPreview.classList.add('hidden');
+            photoPlaceholder.classList.remove('hidden');
+            removePhotoBtn.classList.add('hidden');
+        });
+
+        // 수정/저장 폼 제출 이벤트
+        document.getElementById('recordForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const sugarVal = parseInt(document.getElementById('sugarValue').value);
+            if(!sugarVal) return showToast("수치를 입력해주세요.");
+
+            const editId = document.getElementById('editRecordId').value;
+            const hourRadio = document.querySelector('input[name="hour"]:checked');
+            const hourVal = hourRadio ? hourRadio.value : '2'; // 기본값 추가 방어코드
+            const rDate = document.getElementById('recordDateSelector').value;
+
+            const recordData = {
+                // 수정일 경우 기존 ID 유지, 아니면 새 ID 생성
+                id: editId ? parseInt(editId) : Date.now(),
+                date: rDate,
+                type: currentType,
+                hourVal: currentType === 'fasting' ? null : hourVal,
+                sugar: sugarVal,
+                photo: currentType === 'fasting' ? null : currentPhotoDataUrl,
+                mealComment: currentType === 'fasting' ? '' : document.getElementById('mealComment').value,
+                exercise: currentType === 'fasting' ? '' : document.getElementById('exerciseComment').value
+            };
+
+            if (editId) {
+                // 수정 로직: 기존 배열에서 찾아 덮어쓰기
+                const idx = records.findIndex(r => r.id === parseInt(editId));
+                if(idx > -1) {
+                    records[idx] = recordData;
+                    showToast("수정되었습니다.");
+                }
+            } else {
+                // 추가 로직
+                records.push(recordData);
+                showToast("저장되었습니다.");
+            }
+
+            saveData(); // 로컬 스토리지 업데이트
+            resetForm(); // 폼 초기화
+            renderDailyRecords(); // 리스트 갱신
+            updateHome(); // 카운트 갱신
+        });
+
+        window.resetForm = function() {
+            document.getElementById('editRecordId').value = '';
+            document.getElementById('sugarValue').value = '';
+            document.getElementById('mealComment').value = '';
+            document.getElementById('exerciseComment').value = '';
+            document.getElementById('formTitle').innerHTML = '<i class="fa-solid fa-pen mr-2"></i>새 기록 추가';
+            document.getElementById('submitBtn').textContent = '기록 저장하기';
+            document.getElementById('cancelEditBtn').classList.add('hidden');
+            removePhotoBtn.click(); 
+            document.querySelector('.tab-btn[data-type="fasting"]').click(); 
+        }
+
+        // 수정 버튼 클릭시 호출되는 함수 (전역)
+        window.editRecord = function(id) {
+            // 숫자 타입으로 변환하여 찾기
+            const r = records.find(r => r.id === parseInt(id));
+            if(!r) return;
+            
+            window.scrollTo(0, 0);
+            
+            // 폼에 데이터 채우기
+            document.getElementById('editRecordId').value = r.id;
+            document.getElementById('formTitle').innerHTML = '<i class="fa-solid fa-pen-to-square mr-2"></i>기록 수정하기';
+            document.getElementById('submitBtn').textContent = '수정 완료';
+            document.getElementById('cancelEditBtn').classList.remove('hidden');
+            
+            document.querySelector(`.tab-btn[data-type="${r.type}"]`).click();
+            
+            document.getElementById('sugarValue').value = r.sugar;
+            if(r.type !== 'fasting') {
+                const radioBtn = document.querySelector(`input[name="hour"][value="${r.hourVal}"]`);
+                if(radioBtn) radioBtn.checked = true;
+                
+                document.getElementById('mealComment').value = r.mealComment || '';
+                document.getElementById('exerciseComment').value = r.exercise || '';
+                if (r.photo) {
+                    currentPhotoDataUrl = r.photo;
+                    photoPreview.src = r.photo;
+                    photoPreview.classList.remove('hidden');
+                    photoPlaceholder.classList.add('hidden');
+                    removePhotoBtn.classList.remove('hidden');
+                }
+            }
+        };
+
+        // 삭제 버튼 클릭시 호출되는 함수 (전역)
+        window.deleteRecord = function(id) {
+            if(confirm("정말로 이 기록을 삭제하시겠습니까?")) {
+                records = records.filter(r => r.id !== parseInt(id));
+                saveData(); // 삭제 후 저장
+                renderDailyRecords();
+                updateHome();
+                showToast("삭제되었습니다.");
+            }
+        };
+
+        function renderDailyRecords() {
+            const container = document.getElementById('recordsContainer');
+            const todaysRecords = records.filter(r => r.date === selectedDate).sort((a,b) => b.id - a.id);
+            
+            if (todaysRecords.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-10 text-gray-400 bg-white rounded-2xl border border-gray-100 shadow-sm">
+                        <i class="fa-regular fa-folder-open text-3xl mb-2 text-gray-300"></i>
+                        <p>해당 일자의 기록이 없습니다.</p>
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = '';
+            todaysRecords.forEach(record => {
+                let limit = 0; let isWarning = false;
+                if(record.type === 'fasting') { limit = 95; isWarning = record.sugar >= limit; }
+                else if(record.hourVal === '1') { limit = 140; isWarning = record.sugar >= limit; }
+                else if(record.hourVal === '2') { limit = 120; isWarning = record.sugar >= limit; }
+
+                const headerColor = isWarning ? 'bg-red-500' : 'theme-indicator';
+                const badgeColor = isWarning ? 'bg-red-50 text-red-600 border-red-200' : 'bg-green-50 text-green-600 border-green-200';
+                const statusTxt = isWarning ? '초과' : '정상';
+                const hourStr = record.type === 'fasting' ? '' : `식후 ${record.hourVal}시간`;
+
+                let html = `
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden relative mb-4">
+                    <div class="${headerColor} h-2 w-full absolute top-0 left-0"></div>
+                    <div class="p-4 pt-5">
+                        <div class="flex justify-between items-start mb-3">
+                            <div>
+                                <span class="font-bold text-lg mr-2">${typeNames[record.type]}</span>
+                                <span class="text-sm text-gray-500">${hourStr}</span>
+                            </div>
+                            <div class="flex space-x-2">
+                                <button onclick="editRecord(${record.id})" class="text-gray-400 hover:text-blue-500 p-1"><i class="fa-solid fa-pen-to-square"></i></button>
+                                <button onclick="deleteRecord(${record.id})" class="text-gray-400 hover:text-red-500 p-1"><i class="fa-solid fa-trash-can"></i></button>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-end mb-3">
+                            <span class="text-3xl font-black ${isWarning ? 'text-red-600' : 'text-gray-800'}">${record.sugar}</span>
+                            <span class="text-gray-500 mb-1 ml-1 font-medium text-sm">mg/dL</span>
+                            <span class="ml-auto px-2 py-1 rounded-md text-xs font-bold border ${badgeColor}">${statusTxt} (기준:${limit})</span>
+                        </div>`;
+
+                if(record.type !== 'fasting') {
+                    if(record.photo) html += `<img src="${record.photo}" class="w-full h-40 object-cover rounded-xl mb-3 border border-gray-100">`;
+                    if(record.mealComment || record.exercise) {
+                        html += `<div class="bg-gray-50 rounded-xl p-3 space-y-2 text-sm border border-gray-100">`;
+                        if(record.mealComment) html += `<div><span class="text-orange-500 font-bold text-xs"><i class="fa-solid fa-utensils mr-1"></i>식단</span><p class="text-gray-700 mt-1">${record.mealComment}</p></div>`;
+                        if(record.exercise) html += `<div class="${record.mealComment ? 'pt-2 border-t border-gray-200' : ''}"><span class="text-blue-500 font-bold text-xs"><i class="fa-solid fa-person-running mr-1"></i>운동</span><p class="text-gray-700 mt-1">${record.exercise}</p></div>`;
+                        html += `</div>`;
+                    }
+                }
+                html += `</div></div>`;
+                container.innerHTML += html;
+            });
+        }
+
+        // --- 5. 달력 로직 ---
+        window.changeMonth = function(offset) {
+            calMonth += offset;
+            if(calMonth < 0) { calMonth = 11; calYear--; }
+            else if(calMonth > 11) { calMonth = 0; calYear++; }
+            renderCalendar();
+        }
+
+        function renderCalendar() {
+            document.getElementById('calendarTitle').textContent = `${calYear}년 ${calMonth + 1}월`;
+            const grid = document.getElementById('calendarGrid');
+            grid.innerHTML = '';
+            
+            const firstDay = new Date(calYear, calMonth, 1).getDay();
+            const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+            
+            for(let i=0; i<firstDay; i++) { grid.innerHTML += `<div class="p-2"></div>`; }
+            
+            for(let i=1; i<=daysInMonth; i++) {
+                const dateStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+                const hasRecord = records.some(r => r.date === dateStr);
+                const isToday = dateStr === getTodayStr();
+                const isSelected = dateStr === selectedDate;
+                
+                let classes = "cal-day relative p-2 py-3 rounded-xl cursor-pointer text-sm font-medium ";
+                if(isSelected) classes += "theme-bg shadow-md ";
+                else if(isToday) classes += "bg-gray-100 text-gray-800 ";
+                else classes += "hover:bg-gray-50 ";
+                
+                if(hasRecord && !isSelected) classes += "has-record ";
+
+                grid.innerHTML += `<div class="${classes}" onclick="selectDateFromCal('${dateStr}')">${i}</div>`;
+            }
+        }
+
+        window.selectDateFromCal = function(dateStr) {
+            selectedDate = dateStr;
+            goToTab('daily');
+        }
+
+        // --- 6. 혈당요약 (표) 로직 ---
+        window.changeSummaryMonth = function(offset) {
+            sumMonth += offset;
+            if(sumMonth < 0) { sumMonth = 11; sumYear--; }
+            else if(sumMonth > 11) { sumMonth = 0; sumYear++; }
+            renderSummary();
+        }
+
+        function checkLimit(rec) {
+            if(!rec) return false;
+            let limit = rec.type === 'fasting' ? 95 : (rec.hourVal === '1' ? 140 : 120);
+            return rec.sugar >= limit;
+        }
+
+        function renderSummary() {
+            document.getElementById('summaryTitle').textContent = `${sumYear}년 ${sumMonth + 1}월`;
+            const tbody = document.getElementById('summaryTableBody');
+            const emptyState = document.getElementById('summaryEmptyState');
+            tbody.innerHTML = '';
+            
+            const daysInMonth = new Date(sumYear, sumMonth + 1, 0).getDate();
+            let hasDataInMonth = false;
+
+            for(let i=1; i<=daysInMonth; i++) {
+                const dateStr = `${sumYear}-${String(sumMonth+1).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+                const dayRecords = records.filter(r => r.date === dateStr);
+                
+                if(dayRecords.length === 0) continue; 
+                hasDataInMonth = true;
+
+                const fasting = dayRecords.filter(r => r.type === 'fasting').sort((a,b)=>b.id-a.id)[0];
+                const breakfast = dayRecords.filter(r => r.type === 'breakfast').sort((a,b)=>b.id-a.id)[0];
+                const lunch = dayRecords.filter(r => r.type === 'lunch').sort((a,b)=>b.id-a.id)[0];
+                const dinner = dayRecords.filter(r => r.type === 'dinner').sort((a,b)=>b.id-a.id)[0];
+
+                const getCellHtml = (rec) => {
+                    if(!rec) return '<span class="text-gray-300">-</span>';
+                    const isOver = checkLimit(rec);
+                    if(isOver) return `<span class="text-red-500 font-bold">${rec.sugar}</span>`;
+                    return `<span class="text-gray-700">${rec.sugar}</span>`;
+                };
+
+                const tr = document.createElement('tr');
+                tr.className = "border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer";
+                tr.onclick = function() { selectDateFromCal(dateStr); };
+
+                tr.innerHTML = `
+                    <td class="py-3 px-2 text-center text-gray-500 font-medium whitespace-nowrap">
+                        <span class="theme-text underline decoration-2 underline-offset-2">${String(sumMonth+1).padStart(2,'0')}.${String(i).padStart(2,'0')}</span>
+                    </td>
+                    <td class="py-3 px-2 text-center text-base">${getCellHtml(fasting)}</td>
+                    <td class="py-3 px-2 text-center text-base">${getCellHtml(breakfast)}</td>
+                    <td class="py-3 px-2 text-center text-base">${getCellHtml(lunch)}</td>
+                    <td class="py-3 px-2 text-center text-base">${getCellHtml(dinner)}</td>
+                `;
+                tbody.appendChild(tr);
+            }
+
+            if(!hasDataInMonth) emptyState.classList.remove('hidden');
+            else emptyState.classList.add('hidden');
+        }
+
+        // --- 7. 메뉴요약 탭 로직 ---
+        function renderMenuSummary() {
+            const foodStats = {};
+
+            records.forEach(rec => {
+                if (rec.type === 'fasting' || !rec.mealComment) return;
+
+                const isWarning = checkLimit(rec);
+                const items = rec.mealComment.split(/[,\n]/).map(s => s.trim()).filter(s => s.length > 0);
+
+                items.forEach(item => {
+                    if (!foodStats[item]) {
+                        foodStats[item] = { name: item, total: 0, bad: 0 };
+                    }
+                    foodStats[item].total += 1;
+                    if (isWarning) foodStats[item].bad += 1;
+                });
+            });
+
+            const qualifiedFoods = Object.values(foodStats).filter(f => f.total >= 3);
+            qualifiedFoods.sort((a, b) => b.total - a.total);
+
+            const goodFoods = qualifiedFoods.filter(f => (f.bad / f.total) < 0.5);
+            const badFoods = qualifiedFoods.filter(f => (f.bad / f.total) >= 0.5);
+
+            const goodContainer = document.getElementById('goodFoodContainer');
+            const badContainer = document.getElementById('badFoodContainer');
+
+            goodContainer.innerHTML = '';
+            badContainer.innerHTML = '';
+
+            if (goodFoods.length === 0) {
+                goodContainer.innerHTML = '<span class="text-sm text-gray-400 italic">아직 3번 이상 기록된 안정적인 음식이 없어요.</span>';
+            } else {
+                goodFoods.forEach(f => {
+                    goodContainer.innerHTML += `
+                        <span class="inline-block bg-white text-green-700 border border-green-200 px-3 py-1.5 rounded-full text-sm font-bold shadow-sm">
+                            ${f.name} <span class="font-normal text-xs ml-1 text-gray-500">(${f.total}회)</span>
+                        </span>
+                    `;
+                });
+            }
+
+            if (badFoods.length === 0) {
+                badContainer.innerHTML = '<span class="text-sm text-gray-400 italic">아직 3번 이상 기록된 주의가 필요한 음식이 없어요.</span>';
+            } else {
+                badFoods.forEach(f => {
+                    badContainer.innerHTML += `
+                        <span class="inline-block bg-white text-red-700 border border-red-200 px-3 py-1.5 rounded-full text-sm font-bold shadow-sm">
+                            ${f.name} <span class="font-normal text-xs ml-1 text-gray-500">(${f.total}회 중 ${f.bad}회 초과)</span>
+                        </span>
+                    `;
+                });
+            }
+        }
+
+
+        // --- 8. 그래프 차트 로직 ---
+        document.getElementById('trendPeriod').addEventListener('change', (e) => {
+            const customDiv = document.getElementById('customDateRange');
+            if(e.target.value === 'custom') customDiv.classList.remove('hidden');
+            else customDiv.classList.add('hidden');
+        });
+
+        window.updateChart = function() {
+            const period = document.getElementById('trendPeriod').value;
+            const type = document.getElementById('trendType').value;
+            
+            let startDate, endDate;
+            if (period === 'custom') {
+                startDate = document.getElementById('chartStartDate').value;
+                endDate = document.getElementById('chartEndDate').value;
+                if(!startDate || !endDate) return;
+            } else {
+                endDate = getTodayStr();
+                let sd = new Date();
+                sd.setDate(sd.getDate() - parseInt(period));
+                startDate = sd.toISOString().split('T')[0];
+            }
+
+            const filtered = records.filter(r => r.type === type && r.date >= startDate && r.date <= endDate)
+                                    .sort((a,b) => new Date(a.date) - new Date(b.date));
+            
+            const labels = filtered.map(r => r.date.substring(5)); // MM-DD
+            const dataPoints = filtered.map(r => r.sugar);
+            
+            let limitLine = type === 'fasting' ? 95 : 140; 
+
+            // 캔버스가 화면에 렌더링 된 후에 차트를 그려야 정상적으로 출력됩니다.
+            setTimeout(() => {
+                const canvas = document.getElementById('bloodSugarChart');
+                if(!canvas) return;
+                
+                const ctx = canvas.getContext('2d');
+                const themeColor = getComputedStyle(document.documentElement).getPropertyValue('--main-color').trim() || '#f472b6';
+
+                if(chartInstance) {
+                    chartInstance.destroy();
+                }
+
+                chartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: typeNames[type] + ' 혈당',
+                            data: dataPoints,
+                            borderColor: themeColor,
+                            backgroundColor: themeColor + '33',
+                            borderWidth: 2,
+                            pointBackgroundColor: themeColor,
+                            pointRadius: 4,
+                            fill: true,
+                            tension: 0.3
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: {
+                                beginAtZero: false,
+                                suggestedMin: 60,
+                                suggestedMax: limitLine + 20,
+                                grid: { color: (context) => context.tick.value === limitLine ? '#fca5a5' : '#f3f4f6' },
+                                ticks: { 
+                                    color: (context) => context.tick.value === limitLine ? '#ef4444' : '#6b7280', 
+                                    font: (context) => context.tick.value === limitLine ? {weight: 'bold'} : {} 
+                                }
+                            }
+                        }
+                    }
+                });
+            }, 50); // 약간의 딜레이를 주어 DOM이 완전히 나타난 후 그리도록 함
+        }
+
+        // --- 초기 앱 실행 로직 ---
+        window.onload = function() {
+            document.getElementById('recordDateSelector').value = selectedDate;
+            loadData(); 
+            goToTab('home'); 
+        }
+        
+    </script>
+</body>
+</html>
+
+
+```
+
